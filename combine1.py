@@ -62,6 +62,7 @@ def combine_gltf_files(gltf_files):
         accessor_count = len(gltf.get('accessors', []))
         texture_count = len(gltf.get('textures', []))
         bufferView_count = len(gltf.get('bufferViews', []))
+        image_count = len(gltf.get('images', []))
 
         # Combine scenes
         for scene in gltf.get('scenes', []):
@@ -95,16 +96,33 @@ def combine_gltf_files(gltf_files):
                     }
             combined_gltf['meshes'].append(mesh)
 
-        # Combine materials
+        # Combine materials and handle all texture references
         for material in gltf.get('materials', []):
             if 'name' in material:
                 material['name'] = unique_name(existing_names, material['name'])
-            if 'pbrMetallicRoughness' in material:
-                if 'baseColorTexture' in material['pbrMetallicRoughness']:
-                    texture_index = material['pbrMetallicRoughness']['baseColorTexture'].get('index')
+            
+            texture_paths = [
+                ('pbrMetallicRoughness', 'baseColorTexture'),
+                ('pbrMetallicRoughness', 'metallicRoughnessTexture'),
+                ('normalTexture', None),
+                ('occlusionTexture', None),
+                ('emissiveTexture', None)
+            ]
+            
+            for texture_path in texture_paths:
+                base_key = texture_path[0]
+                sub_key = texture_path[1]
+                
+                if base_key in material:
+                    texture_info = material[base_key]
+                    if sub_key:
+                        texture_info = texture_info.get(sub_key, {})
+                    
+                    texture_index = texture_info.get('index')
                     if texture_index is not None:
                         validate_index(texture_index, texture_count, "texture")
-                        material['pbrMetallicRoughness']['baseColorTexture']['index'] += texture_offset
+                        texture_info['index'] += texture_offset
+            
             combined_gltf['materials'].append(material)
 
         # Combine accessors
@@ -130,7 +148,7 @@ def combine_gltf_files(gltf_files):
                 validate_index(texture['sampler'], len(gltf.get('samplers', [])), "sampler")
                 texture['sampler'] += sampler_offset
             if 'source' in texture:
-                validate_index(texture['source'], len(gltf.get('images', [])), "image")
+                validate_index(texture['source'], image_count, "image")
                 texture['source'] += image_offset
             combined_gltf['textures'].append(texture)
 
