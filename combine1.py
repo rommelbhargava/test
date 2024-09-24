@@ -55,7 +55,7 @@ def combine_gltf_files(gltf_files):
     for gltf_file in gltf_files:
         gltf = load_gltf(gltf_file)
 
-        # Validate input data
+        # Get the number of elements, defaulting to 0 if the section is missing
         node_count = len(gltf.get('nodes', []))
         mesh_count = len(gltf.get('meshes', []))
         material_count = len(gltf.get('materials', []))
@@ -86,11 +86,13 @@ def combine_gltf_files(gltf_files):
                 if 'material' in primitive:
                     validate_index(primitive['material'], material_count, "material")
                     primitive['material'] += material_offset  # Adjust material index
-                validate_index(primitive['indices'], accessor_count, "accessor")
-                primitive['indices'] += accessor_offset  # Adjust accessor index for indices
-                primitive['attributes'] = {
-                    k: v + accessor_offset for k, v in primitive['attributes'].items()
-                }
+                if 'indices' in primitive:
+                    validate_index(primitive['indices'], accessor_count, "accessor")
+                    primitive['indices'] += accessor_offset  # Adjust accessor index for indices
+                if 'attributes' in primitive:
+                    primitive['attributes'] = {
+                        k: v + accessor_offset for k, v in primitive['attributes'].items()
+                    }
             combined_gltf['meshes'].append(mesh)
 
         # Combine materials
@@ -99,14 +101,17 @@ def combine_gltf_files(gltf_files):
                 material['name'] = unique_name(existing_names, material['name'])
             if 'pbrMetallicRoughness' in material:
                 if 'baseColorTexture' in material['pbrMetallicRoughness']:
-                    validate_index(material['pbrMetallicRoughness']['baseColorTexture']['index'], texture_count, "texture")
-                    material['pbrMetallicRoughness']['baseColorTexture']['index'] += texture_offset
+                    texture_index = material['pbrMetallicRoughness']['baseColorTexture'].get('index')
+                    if texture_index is not None:
+                        validate_index(texture_index, texture_count, "texture")
+                        material['pbrMetallicRoughness']['baseColorTexture']['index'] += texture_offset
             combined_gltf['materials'].append(material)
 
         # Combine accessors
         for accessor in gltf.get('accessors', []):
-            validate_index(accessor['bufferView'], bufferView_count, "bufferView")
-            accessor['bufferView'] += bufferView_offset  # Adjust bufferView index
+            if 'bufferView' in accessor:
+                validate_index(accessor['bufferView'], bufferView_count, "bufferView")
+                accessor['bufferView'] += bufferView_offset  # Adjust bufferView index
             combined_gltf['accessors'].append(accessor)
 
         # Combine bufferViews
@@ -121,10 +126,12 @@ def combine_gltf_files(gltf_files):
 
         # Combine textures, samplers, and images
         for texture in gltf.get('textures', []):
-            validate_index(texture['sampler'], len(gltf.get('samplers', [])), "sampler")
-            validate_index(texture['source'], len(gltf.get('images', [])), "image")
-            texture['sampler'] += sampler_offset
-            texture['source'] += image_offset
+            if 'sampler' in texture:
+                validate_index(texture['sampler'], len(gltf.get('samplers', [])), "sampler")
+                texture['sampler'] += sampler_offset
+            if 'source' in texture:
+                validate_index(texture['source'], len(gltf.get('images', [])), "image")
+                texture['source'] += image_offset
             combined_gltf['textures'].append(texture)
 
         for sampler in gltf.get('samplers', []):
@@ -134,33 +141,33 @@ def combine_gltf_files(gltf_files):
             combined_gltf['images'].append(image)
 
         # Combine animations (only if "animations" key exists)
-        if 'animations' in gltf:
-            for animation in gltf['animations']:
-                for channel in animation['channels']:
-                    # Validate node index
+        for animation in gltf.get('animations', []):
+            for channel in animation.get('channels', []):
+                if 'target' in channel and 'node' in channel['target']:
                     validate_index(channel['target']['node'], node_count, "node")
                     channel['target']['node'] += node_offset
 
-                for sampler in animation['samplers']:
-                    # Validate input/output accessors
+            for sampler in animation.get('samplers', []):
+                if 'input' in sampler:
                     validate_index(sampler['input'], accessor_count, "accessor")
-                    validate_index(sampler['output'], accessor_count, "accessor")
                     sampler['input'] += accessor_offset
+                if 'output' in sampler:
+                    validate_index(sampler['output'], accessor_count, "accessor")
                     sampler['output'] += accessor_offset
 
-                combined_gltf['animations'].append(animation)
+            combined_gltf['animations'].append(animation)
 
         # Update offsets for the next glTF file
-        node_offset += len(gltf['nodes'])
-        mesh_offset += len(gltf['meshes'])
-        material_offset += len(gltf['materials'])
-        accessor_offset += len(gltf['accessors'])
-        bufferView_offset += len(gltf['bufferViews'])
-        buffer_offset += len(gltf['buffers'])
+        node_offset += len(gltf.get('nodes', []))
+        mesh_offset += len(gltf.get('meshes', []))
+        material_offset += len(gltf.get('materials', []))
+        accessor_offset += len(gltf.get('accessors', []))
+        bufferView_offset += len(gltf.get('bufferViews', []))
+        buffer_offset += len(gltf.get('buffers', []))
         animation_offset += len(gltf.get('animations', []))
-        texture_offset += len(gltf['textures'])
-        sampler_offset += len(gltf['samplers'])
-        image_offset += len(gltf['images'])
+        texture_offset += len(gltf.get('textures', []))
+        sampler_offset += len(gltf.get('samplers', []))
+        image_offset += len(gltf.get('images', []))
 
     # Save combined glTF JSON
     with open('combined_model.gltf', 'w') as f:
