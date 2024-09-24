@@ -114,21 +114,22 @@ def combine_gltf_files(gltf_files):
         for image in gltf.get('images', []):
             combined_gltf['images'].append(image)
 
-        # Combine animations
-        for animation in gltf.get('animations', []):
-            for channel in animation['channels']:
-                # Validate node index
-                validate_index(channel['target']['node'], node_count, "node")
-                channel['target']['node'] += node_offset
+        # Combine animations (only if "animations" key exists)
+        if 'animations' in gltf:
+            for animation in gltf['animations']:
+                for channel in animation['channels']:
+                    # Validate node index
+                    validate_index(channel['target']['node'], node_count, "node")
+                    channel['target']['node'] += node_offset
 
-            for sampler in animation['samplers']:
-                # Validate input/output accessors
-                validate_index(sampler['input'], accessor_count, "accessor")
-                validate_index(sampler['output'], accessor_count, "accessor")
-                sampler['input'] += accessor_offset
-                sampler['output'] += accessor_offset
+                for sampler in animation['samplers']:
+                    # Validate input/output accessors
+                    validate_index(sampler['input'], accessor_count, "accessor")
+                    validate_index(sampler['output'], accessor_count, "accessor")
+                    sampler['input'] += accessor_offset
+                    sampler['output'] += accessor_offset
 
-            combined_gltf['animations'].append(animation)
+                combined_gltf['animations'].append(animation)
 
         # Update offsets for the next glTF file
         node_offset += len(gltf['nodes'])
@@ -137,7 +138,7 @@ def combine_gltf_files(gltf_files):
         accessor_offset += len(gltf['accessors'])
         bufferView_offset += len(gltf['bufferViews'])
         buffer_offset += len(gltf['buffers'])
-        animation_offset += len(gltf['animations'])
+        animation_offset += len(gltf.get('animations', []))
         texture_offset += len(gltf['textures'])
         sampler_offset += len(gltf['samplers'])
         image_offset += len(gltf['images'])
