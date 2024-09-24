@@ -4,129 +4,61 @@ def load_gltf(filename):
     with open(filename, 'r') as f:
         return json.load(f)
 
-def offset_indices(data, offset_map):
-    if isinstance(data, list):
-        return [offset_indices(item, offset_map) for item in data]
-    elif isinstance(data, int):
-        for key, offset in offset_map.items():
-            if key == 'nodes' and 'mesh' in offset_map and data >= offset_map['mesh']:
-                return data + offset
-            elif key == 'skins' and 'joints' in offset_map and data >= offset_map['joints']:
-                return data + offset
-            elif data >= offset:
-                return data + offset
-        return data
-    elif isinstance(data, dict):
-        for k, v in data.items():
-            data[k] = offset_indices(v, offset_map)
-    return data
-
-def merge_gltf(gltf1, gltf2):
-    combined_gltf = {
-        "asset": gltf1.get("asset", {"version": "2.0"}),  
-        "scenes": [],
-        "nodes": [],
-        "meshes": [],
-        "materials": [],
-        "accessors": [],
-        "bufferViews": [],
-        "buffers": [],
-        "textures": [],
-        "samplers": [],
-        "images": [],
-        "animations": [],
-        "skins": [],
-        "cameras": [],
-        "extensionsUsed": [],
-        "extensionsRequired": [],
-    }
-
-    # Calculate offsets for each section
-    offsets = {
-        "scenes": len(gltf1.get("scenes", [])),
-        "nodes": len(gltf1.get("nodes", [])),
-        "meshes": len(gltf1.get("meshes", [])),
-        "materials": len(gltf1.get("materials", [])),
-        "accessors": len(gltf1.get("accessors", [])),
-        "bufferViews": len(gltf1.get("bufferViews", [])),
-        "buffers": len(gltf1.get("buffers", [])),
-        "textures": len(gltf1.get("textures", [])),
-        "samplers": len(gltf1.get("samplers", [])),
-        "images": len(gltf1.get("images", [])),
-        "animations": len(gltf1.get("animations", [])),
-        "skins": len(gltf1.get("skins", [])),
-        "cameras": len(gltf1.get("cameras", [])),
-    }
-
-    # Function to merge two lists with offset correction
-    def merge_and_offset(key, offset_key):
-        offset = offsets[offset_key]
-        for item in gltf2.get(key, []):
-            item = offset_indices(item, offsets)
-            combined_gltf[key].append(item)
-
-    # Merge scenes
-    for scene in gltf1.get("scenes", []):
-        combined_gltf["scenes"].append(scene)
-    for scene in gltf2.get("scenes", []):
-        if "nodes" in scene:
-            scene["nodes"] = [node + offsets['nodes'] for node in scene["nodes"]]
-        combined_gltf["scenes"].append(scene)
-
-    # Merge nodes
-    merge_and_offset("nodes", "nodes")
-
-    # Merge meshes
-    merge_and_offset("meshes", "meshes")
-
-    # Merge materials
-    merge_and_offset("materials", "materials")
-
-    # Merge accessors
-    merge_and_offset("accessors", "accessors")
-
-    # Merge bufferViews
-    merge_and_offset("bufferViews", "bufferViews")
-
-    # Merge buffers
-    merge_and_offset("buffers", "buffers")
-
-    # Merge textures
-    merge_and_offset("textures", "textures")
-
-    # Merge samplers
-    merge_and_offset("samplers", "samplers")
-
-    # Merge images
-    merge_and_offset("images", "images")
-
-    # Merge animations
-    merge_and_offset("animations", "animations")
-
-    # Merge skins
-    merge_and_offset("skins", "skins")
-
-    # Merge cameras
-    merge_and_offset("cameras", "cameras")
-
-    # Merge extensions
-    for ext in gltf1.get("extensionsUsed", []):
-        combined_gltf["extensionsUsed"].append(ext)
-    for ext in gltf2.get("extensionsUsed", []):
-        if ext not in combined_gltf["extensionsUsed"]:
-            combined_gltf["extensionsUsed"].append(ext)
-
-    for ext in gltf1.get("extensionsRequired", []):
-        combined_gltf["extensionsRequired"].append(ext)
-    for ext in gltf2.get("extensionsRequired", []):
-        if ext not in combined_gltf["extensionsRequired"]:
-            combined_gltf["extensionsRequired"].append(ext)
-
-    return combined_gltf
-
 def save_gltf(filename, data):
     with open(filename, 'w') as f:
         json.dump(data, f, indent=2)
+
+def offset_indices(obj, offset_map):
+    """Recursively offset indices based on the offset map."""
+    if isinstance(obj, list):
+        return [offset_indices(item, offset_map) for item in obj]
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in offset_map:
+                obj[k] = v + offset_map[k]
+            else:
+                obj[k] = offset_indices(v, offset_map)
+    elif isinstance(obj, int):
+        return obj
+    return obj
+
+def merge_gltf(gltf1, gltf2):
+    # Calculate offsets
+    offsets = {
+        "accessors": len(gltf1.get("accessors", [])),
+        "animations": len(gltf1.get("animations", [])),
+        "buffers": len(gltf1.get("buffers", [])),
+        "bufferViews": len(gltf1.get("bufferViews", [])),
+        "cameras": len(gltf1.get("cameras", [])),
+        "images": len(gltf1.get("images", [])),
+        "materials": len(gltf1.get("materials", [])),
+        "meshes": len(gltf1.get("meshes", [])),
+        "nodes": len(gltf1.get("nodes", [])),
+        "samplers": len(gltf1.get("samplers", [])),
+        "scenes": len(gltf1.get("scenes", [])),
+        "skins": len(gltf1.get("skins", [])),
+        "textures": len(gltf1.get("textures", [])),
+    }
+
+    combined_gltf = gltf1.copy()
+
+    # Update nodes and their references
+    for key in ['nodes', 'meshes', 'materials', 'accessors', 'bufferViews', 'buffers', 'textures', 'samplers', 'images', 'animations', 'skins', 'cameras', 'scenes']:
+        if key in gltf2:
+            for item in gltf2[key]:
+                offset_item = offset_indices(item.copy(), offsets)
+                combined_gltf[key].append(offset_item)
+
+    # Update extensions if present
+    for ext_key in ["extensionsUsed", "extensionsRequired"]:
+        if ext_key in gltf2:
+            if ext_key not in combined_gltf:
+                combined_gltf[ext_key] = []
+            for ext in gltf2[ext_key]:
+                if ext not in combined_gltf[ext_key]:
+                    combined_gltf[ext_key].append(ext)
+
+    return combined_gltf
 
 def combine_gltf_files(gltf_file_1, gltf_file_2, output_file):
     gltf1 = load_gltf(gltf_file_1)
