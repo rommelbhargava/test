@@ -9,6 +9,16 @@ def validate_index(reference, total_count, ref_type):
     if reference >= total_count:
         raise ValueError(f"Invalid {ref_type} index: {reference} (total: {total_count})")
 
+def unique_name(existing_names, name):
+    if name not in existing_names:
+        return name
+    i = 1
+    new_name = f"{name}_{i}"
+    while new_name in existing_names:
+        i += 1
+        new_name = f"{name}_{i}"
+    return new_name
+
 def combine_gltf_files(gltf_files):
     combined_gltf = {
         "asset": {
@@ -28,6 +38,7 @@ def combine_gltf_files(gltf_files):
     }
 
     buffer_data = []
+    existing_names = set()
     
     # Track offsets for index shifts
     node_offset = 0
@@ -54,6 +65,8 @@ def combine_gltf_files(gltf_files):
 
         # Combine scenes
         for scene in gltf.get('scenes', []):
+            if 'name' in scene:
+                scene['name'] = unique_name(existing_names, scene['name'])
             combined_gltf['scenes'].append(scene)
 
         # Combine nodes
@@ -61,10 +74,14 @@ def combine_gltf_files(gltf_files):
             if 'mesh' in node:
                 validate_index(node['mesh'], mesh_count, "mesh")
                 node['mesh'] += mesh_offset  # Adjust mesh index
+            if 'name' in node:
+                node['name'] = unique_name(existing_names, node['name'])
             combined_gltf['nodes'].append(node)
 
         # Combine meshes and update material indices
         for mesh in gltf.get('meshes', []):
+            if 'name' in mesh:
+                mesh['name'] = unique_name(existing_names, mesh['name'])
             for primitive in mesh['primitives']:
                 if 'material' in primitive:
                     validate_index(primitive['material'], material_count, "material")
@@ -78,6 +95,8 @@ def combine_gltf_files(gltf_files):
 
         # Combine materials
         for material in gltf.get('materials', []):
+            if 'name' in material:
+                material['name'] = unique_name(existing_names, material['name'])
             if 'pbrMetallicRoughness' in material:
                 if 'baseColorTexture' in material['pbrMetallicRoughness']:
                     validate_index(material['pbrMetallicRoughness']['baseColorTexture']['index'], texture_count, "texture")
