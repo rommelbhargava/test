@@ -5,6 +5,10 @@ def load_gltf(filename):
     with open(filename, 'r') as f:
         return json.load(f)
 
+def validate_index(reference, total_count, ref_type):
+    if reference >= total_count:
+        raise ValueError(f"Invalid {ref_type} index: {reference} (total: {total_count})")
+
 def combine_gltf_files(gltf_files):
     combined_gltf = {
         "asset": {
@@ -40,13 +44,22 @@ def combine_gltf_files(gltf_files):
     for gltf_file in gltf_files:
         gltf = load_gltf(gltf_file)
 
+        # Validate input data
+        node_count = len(gltf.get('nodes', []))
+        mesh_count = len(gltf.get('meshes', []))
+        material_count = len(gltf.get('materials', []))
+        accessor_count = len(gltf.get('accessors', []))
+        texture_count = len(gltf.get('textures', []))
+        bufferView_count = len(gltf.get('bufferViews', []))
+
         # Combine scenes
         for scene in gltf.get('scenes', []):
             combined_gltf['scenes'].append(scene)
 
-        # Combine nodes (update node indices in animations later)
+        # Combine nodes
         for node in gltf.get('nodes', []):
             if 'mesh' in node:
+                validate_index(node['mesh'], mesh_count, "mesh")
                 node['mesh'] += mesh_offset  # Adjust mesh index
             combined_gltf['nodes'].append(node)
 
@@ -54,20 +67,26 @@ def combine_gltf_files(gltf_files):
         for mesh in gltf.get('meshes', []):
             for primitive in mesh['primitives']:
                 if 'material' in primitive:
+                    validate_index(primitive['material'], material_count, "material")
                     primitive['material'] += material_offset  # Adjust material index
+                validate_index(primitive['indices'], accessor_count, "accessor")
                 primitive['indices'] += accessor_offset  # Adjust accessor index for indices
-                primitive['attributes'] = {k: v + accessor_offset for k, v in primitive['attributes'].items()}
+                primitive['attributes'] = {
+                    k: v + accessor_offset for k, v in primitive['attributes'].items()
+                }
             combined_gltf['meshes'].append(mesh)
 
         # Combine materials
         for material in gltf.get('materials', []):
             if 'pbrMetallicRoughness' in material:
                 if 'baseColorTexture' in material['pbrMetallicRoughness']:
+                    validate_index(material['pbrMetallicRoughness']['baseColorTexture']['index'], texture_count, "texture")
                     material['pbrMetallicRoughness']['baseColorTexture']['index'] += texture_offset
             combined_gltf['materials'].append(material)
 
         # Combine accessors
         for accessor in gltf.get('accessors', []):
+            validate_index(accessor['bufferView'], bufferView_count, "bufferView")
             accessor['bufferView'] += bufferView_offset  # Adjust bufferView index
             combined_gltf['accessors'].append(accessor)
 
@@ -81,9 +100,10 @@ def combine_gltf_files(gltf_files):
             buffer_data.append(buffer['uri'])
             combined_gltf['buffers'].append(buffer)
 
-        # Combine textures
-                # Combine textures, samplers, and images
+        # Combine textures, samplers, and images
         for texture in gltf.get('textures', []):
+            validate_index(texture['sampler'], len(gltf.get('samplers', [])), "sampler")
+            validate_index(texture['source'], len(gltf.get('images', [])), "image")
             texture['sampler'] += sampler_offset
             texture['source'] += image_offset
             combined_gltf['textures'].append(texture)
@@ -97,11 +117,14 @@ def combine_gltf_files(gltf_files):
         # Combine animations
         for animation in gltf.get('animations', []):
             for channel in animation['channels']:
-                # Update the node index that the animation is affecting
+                # Validate node index
+                validate_index(channel['target']['node'], node_count, "node")
                 channel['target']['node'] += node_offset
 
             for sampler in animation['samplers']:
-                # Adjust the input/output accessors
+                # Validate input/output accessors
+                validate_index(sampler['input'], accessor_count, "accessor")
+                validate_index(sampler['output'], accessor_count, "accessor")
                 sampler['input'] += accessor_offset
                 sampler['output'] += accessor_offset
 
