@@ -1,0 +1,42 @@
+// Fresnel-Schlick approximation function
+float3 FresnelSchlick(float cosTheta, float3 F0) {
+    // Schlick's approximation: Fresnel reflectance increases at grazing angles
+    return F0 + (1.0f - F0) * pow(1.0f - cosTheta, 5.0f);
+}
+
+// Fresnel-Schlick function with F0 and metallicness handling
+float3 FresnelSchlickMetallic(float cosTheta, float3 F0, float metallic, float3 albedo) {
+    // For metals, F0 is replaced by the albedo color (reflectivity = albedo)
+    float3 F0_metal = lerp(F0, albedo, metallic);
+    return FresnelSchlick(cosTheta, F0_metal);
+}
+
+// Reflection computation using Cook-Torrance BRDF
+float3 ComputeReflection(float3 albedo, float metallic, float roughness, float3 normal, float3 viewDir, float3 lightDir) {
+    // Half-vector between view and light directions
+    float3 h = normalize(viewDir + lightDir);
+
+    // Fresnel term using the Fresnel-Schlick approximation
+    float3 F0 = float3(0.04f, 0.04f, 0.04f); // Reflectivity at normal incidence for dielectrics
+    float3 F = FresnelSchlickMetallic(dot(viewDir, h), F0, metallic, albedo);
+
+    // Normal Distribution Function (GGX)
+    float D = GGX_NDF(normal, h, roughness);
+
+    // Geometry Function (Schlick-GGX)
+    float G = GeometrySmith(normal, viewDir, lightDir, roughness);
+
+    // Specular reflection using Cook-Torrance BRDF
+    float3 specular = (D * F * G) / (4.0 * max(dot(normal, viewDir), 0.001) * max(dot(normal, lightDir), 0.001));
+
+    // Diffuse term (only for non-metals)
+    float3 k_s = F; // Specular component
+    float3 k_d = float3(1.0, 1.0, 1.0) - k_s; // Diffuse reflection amount
+    k_d *= 1.0 - metallic; // No diffuse for metals
+
+    // Lambertian diffuse reflection
+    float3 diffuse = k_d * albedo / PI;
+
+    // Final reflection combining diffuse and specular
+    return diffuse + specular;
+}
