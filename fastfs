@@ -40,3 +40,33 @@ float3 ComputeReflection(float3 albedo, float metallic, float roughness, float3 
     // Final reflection combining diffuse and specular
     return diffuse + specular;
 }
+float GGX_NDF(float3 normal, float3 halfVector, float roughness) {
+    float a = roughness * roughness;  // Square the roughness
+    float NdotH = max(dot(normal, halfVector), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    
+    float num = a * a;
+    float denom = (NdotH2 * (a * a - 1.0) + 1.0);
+    
+    return num / (PI * denom * denom); // GGX NDF
+}
+// Schlick-GGX geometry function for one direction
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+    
+    float denom = NdotV * (1.0 - k) + k;
+    return NdotV / denom;
+}
+
+// Smith geometry function that combines both view and light directions
+float GeometrySmith(float3 normal, float3 viewDir, float3 lightDir, float roughness) {
+    float NdotV = max(dot(normal, viewDir), 0.0);
+    float NdotL = max(dot(normal, lightDir), 0.0);
+    
+    float ggx1 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx2 = GeometrySchlickGGX(NdotL, roughness);
+    
+    return ggx1 * ggx2;
+}
+
