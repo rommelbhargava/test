@@ -1,0 +1,150 @@
+cmake_minimum_required(VERSION 3.10)
+project(VulkanExample)
+
+# Find Vulkan
+find_package(Vulkan REQUIRED)
+
+# Set the C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+# Source files
+set(SOURCES src/main.cpp)
+
+# Include Vulkan headers
+include_directories(${Vulkan_INCLUDE_DIRS})
+
+# Add executable
+add_executable(VulkanExample ${SOURCES})
+
+# Link Vulkan library
+target_link_libraries(VulkanExample ${Vulkan_LIBRARIES})
+
+# Additional Vulkan SDK path (for Windows, if needed)
+if(WIN32)
+    target_include_directories(VulkanExample PRIVATE $ENV{VULKAN_SDK}/Include)
+    target_link_directories(VulkanExample PRIVATE $ENV{VULKAN_SDK}/Lib)
+endif()
+
+
+#include <vulkan/vulkan.h>
+#include <iostream>
+#include <vector>
+
+void checkVkResult(VkResult result, const char* message) {
+    if (result != VK_SUCCESS) {
+        std::cerr << "Error: " << message << " (VkResult: " << result << ")" << std::endl;
+        exit(-1);
+    }
+}
+
+int main() {
+    // Vulkan Instance Creation
+    VkInstance instance;
+    VkInstanceCreateInfo instanceCreateInfo = {};
+    instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+
+    VkResult result = vkCreateInstance(&instanceCreateInfo, nullptr, &instance);
+    checkVkResult(result, "Failed to create Vulkan instance");
+
+    // Physical Device Selection
+    uint32_t physicalDeviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, nullptr);
+    if (physicalDeviceCount == 0) {
+        std::cerr << "No physical devices found!" << std::endl;
+        return -1;
+    }
+
+    std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
+    vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices.data());
+    VkPhysicalDevice physicalDevice = physicalDevices[0];
+
+    // Queue Family Selection
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+    if (queueFamilyCount == 0) {
+        std::cerr << "No queue families found!" << std::endl;
+        return -1;
+    }
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
+
+    uint32_t queueFamilyIndex = -1;
+    for (uint32_t i = 0; i < queueFamilyCount; i++) {
+        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            queueFamilyIndex = i;
+            break;
+        }
+    }
+
+    if (queueFamilyIndex == -1) {
+        std::cerr << "No suitable queue family found!" << std::endl;
+        return -1;
+    }
+
+    // Logical Device Creation
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueCreateInfo = {};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = queueFamilyIndex;
+    queueCreateInfo.queueCount = 1;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    VkDeviceCreateInfo deviceCreateInfo = {};
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.queueCreateInfoCount = 1;
+    deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+
+    VkDevice device;
+    result = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device);
+    checkVkResult(result, "Failed to create logical device");
+
+    // Retrieve the queue
+    VkQueue queue;
+    vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue);
+
+    // Semaphore Creation
+    VkSemaphore semaphore;
+    VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    result = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &semaphore);
+    checkVkResult(result, "Failed to create semaphore");
+
+    // Task 1 Submission
+    VkSubmitInfo task1SubmitInfo = {};
+    task1SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    task1SubmitInfo.waitSemaphoreCount = 0; // No wait semaphores for Task 1
+    task1SubmitInfo.pWaitSemaphores = nullptr;
+    task1SubmitInfo.signalSemaphoreCount = 1;
+    task1SubmitInfo.pSignalSemaphores = &semaphore; // Task 1 signals this semaphore
+
+    result = vkQueueSubmit(queue, 1, &task1SubmitInfo, VK_NULL_HANDLE);
+    checkVkResult(result, "Failed to submit Task 1");
+
+    // Task 2 Submission
+    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    VkSubmitInfo task2SubmitInfo = {};
+    task2SubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    task2SubmitInfo.waitSemaphoreCount = 1;
+    task2SubmitInfo.pWaitSemaphores = &semaphore; // Task 2 waits on this semaphore
+    task2SubmitInfo.pWaitDstStageMask = waitStages;
+    task2SubmitInfo.signalSemaphoreCount = 0;
+    task2SubmitInfo.pSignalSemaphores = nullptr;
+
+    result = vkQueueSubmit(queue, 1, &task2SubmitInfo, VK_NULL_HANDLE);
+    checkVkResult(result, "Failed to submit Task 2");
+
+    // Wait for the queue to finish processing
+    vkQueueWaitIdle(queue);
+
+    // Cleanup
+    vkDestroySemaphore(device, semaphore, nullptr);
+    vkDestroyDevice(device, nullptr);
+    vkDestroyInstance(instance, nullptr);
+
+    std::cout << "Tasks executed and synchronized successfully." << std::endl;
+    return 0;
+}
+
