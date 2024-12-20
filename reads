@@ -1,0 +1,82 @@
+To include a semaphore mechanism for synchronization during the CPU upscaling process, you can use Vulkan’s VkSemaphore to signal when specific operations are completed. Here’s how you can integrate semaphores for synchronization:
+
+Updated Steps with Semaphores
+	1.	Create Semaphores:
+	•	One semaphore signals the completion of rendering the image.
+	•	Another semaphore signals the completion of CPU upscaling.
+
+VkSemaphore renderFinishedSemaphore, upscaleFinishedSemaphore;
+
+VkSemaphoreCreateInfo semaphoreInfo = {};
+semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore);
+vkCreateSemaphore(device, &semaphoreInfo, nullptr, &upscaleFinishedSemaphore);
+
+	2.	Signal the Render Completion:
+	•	Submit the rendering command to the graphics queue and signal the renderFinishedSemaphore.
+
+VkSubmitInfo submitInfo = {};
+submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+// Wait for the render completion
+VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+submitInfo.waitSemaphoreCount = 0;
+submitInfo.pWaitSemaphores = nullptr; // No wait semaphore
+submitInfo.pWaitDstStageMask = waitStages;
+
+// Signal render completion
+submitInfo.signalSemaphoreCount = 1;
+submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
+
+vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+
+	3.	Wait for Render Completion on CPU:
+	•	Use vkWaitSemaphores to wait for renderFinishedSemaphore before transferring the image to the CPU.
+
+VkSemaphoreWaitInfo waitInfo = {};
+waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+waitInfo.semaphoreCount = 1;
+waitInfo.pSemaphores = &renderFinishedSemaphore;
+waitInfo.pValues = nullptr; // Default value is 0 for binary semaphores
+
+vkWaitSemaphores(device, &waitInfo, UINT64_MAX);
+
+	4.	Signal the Upscale Completion:
+	•	After the CPU completes upscaling, signal upscaleFinishedSemaphore.
+
+// Upscaling logic here...
+
+VkSubmitInfo upscaleSubmitInfo = {};
+upscaleSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+// No wait semaphores; signal upscale completion
+upscaleSubmitInfo.signalSemaphoreCount = 1;
+upscaleSubmitInfo.pSignalSemaphores = &upscaleFinishedSemaphore;
+
+vkQueueSubmit(graphicsQueue, 1, &upscaleSubmitInfo, VK_NULL_HANDLE);
+
+	5.	Wait for Upscale Completion Before Presenting:
+	•	Use upscaleFinishedSemaphore to synchronize the presentation of the upscaled image.
+
+VkPresentInfoKHR presentInfo = {};
+presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+// Wait for upscale completion
+presentInfo.waitSemaphoreCount = 1;
+presentInfo.pWaitSemaphores = &upscaleFinishedSemaphore;
+
+// Swapchain and image information
+presentInfo.swapchainCount = 1;
+presentInfo.pSwapchains = &swapchain;
+presentInfo.pImageIndices = &imageIndex;
+
+vkQueuePresentKHR(presentQueue, &presentInfo);
+
+Final Flow
+	1.	Render the scene → Signal renderFinishedSemaphore.
+	2.	Wait for renderFinishedSemaphore on the CPU → Perform upscaling.
+	3.	Signal upscaleFinishedSemaphore after CPU upscaling.
+	4.	Wait for upscaleFinishedSemaphore → Present the final image.
+
+This approach ensures smooth synchronization between GPU rendering, CPU upscaling, and final presentation. Would you like assistance with testing or debugging this flow?
